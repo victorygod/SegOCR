@@ -103,6 +103,8 @@ class Unet:
             fname, suffix = name.strip().split(".")
             img_path = self.data_path+"Images/"+fname+".jpg"
             label_path = self.data_path+"train_gt_t13/"+fname+".txt"
+            if not os.path.exists(img_path):
+                continue
             img_fnames.append(img_path)
             label_fnames.append(label_path)
 
@@ -116,7 +118,7 @@ class Unet:
 
             dataset = tf.data.Dataset.from_tensor_slices((img_fnames, label_fnames))
             dataset = dataset.map(lambda img_f, label_f: tuple(tf.numpy_function(util.load_data, [img_f, label_f], 
-                [tf.uint8, tf.uint8]))).filter(lambda x, y: (x is not None) and (y is not None)).batch(8).prefetch(32).shuffle(2).repeat(10)
+                [tf.uint8, tf.uint8]))).batch(8)#.prefetch(8).shuffle(2).repeat(10)
      
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()

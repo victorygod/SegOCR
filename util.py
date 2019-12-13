@@ -18,7 +18,7 @@ def load_data(img_path, label_path):
     img = cv2.imread(img_path)
     if img is None:
         print (img_path)
-        return None, None
+        return
     min_l = float(min(img.shape[0], img.shape[1]))
     rate= 256.0/min_l
     img = cv2.resize(img, (0,0), fx = rate, fy = rate, interpolation=cv2.INTER_LINEAR)
