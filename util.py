@@ -13,8 +13,11 @@ def point_in_box(x, y, box):
     return (a>=0 and b>=0 and c>=0 and d>=0) or (a<=0 and b<=0 and c<=0 and d<=0)
 
 def load_data(img_path, label_path):
+    img_path = img_path.decode()
+    label_path = label_path.decode()
     img = cv2.imread(img_path)
     if img is None:
+        print (img_path)
         return None, None
     min_l = float(min(img.shape[0], img.shape[1]))
     rate= 256.0/min_l
@@ -42,7 +45,7 @@ def load_data(img_path, label_path):
                 if point_in_box(x, y, box):
                     label_img[x, y, 0]=1
                     break
-    return img, label_img
+    return img, label_img.astype(np.uint8)
 
 # def random_crop_resize(img, label_img, shape=[256, 256]):
 #     l = min(img.shape[0], img.shape[1])

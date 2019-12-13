@@ -76,17 +76,16 @@ class Unet:
             optim = tf.train.AdamOptimizer().minimize(loss)
         return input_tensor, label_tensor, output, loss, optim
 
-    def worker(self, info):
-        if len(info.strip().split("."))!=2:
-            return None
-        fname, suffix = info.strip().split(".")
-        img_path = self.data_path+"Images/"+fname+".jpg"
-        label_path = self.data_path+"train_gt_t13/"+fname+".txt"
-        img, label_img = util.load_data(img_path, label_path)
-        if img is None:
-            return None
-        # img, label_img = util.random_crop_resize(img, label_img, [256, 256])
-        return (img, label_img, fname)
+    # def worker(self, info):
+    #     if len(info.strip().split("."))!=2:
+    #         return None
+    #     fname, suffix = info.strip().split(".")
+    #     img_path = self.data_path+"Images/"+fname+".jpg"
+    #     label_path = self.data_path+"train_gt_t13/"+fname+".txt"
+    #     img, label_img = util.load_data(img_path, label_path)
+    #     if img is None:
+    #         return None
+    #     return (img, label_img, fname)
 
     def train(self):
         input_tensor, label_tensor, output, loss, optim = self.compile()
@@ -97,6 +96,16 @@ class Unet:
         self.data_path = "../data/icdar2019/"
 
         data_list = os.listdir(self.data_path+"train_gt_t13/")
+        img_fnames, label_fnames = [], []
+        for name in data_list:
+            if len(name.strip().split("."))!=2:
+                continue
+            fname, suffix = name.strip().split(".")
+            img_path = self.data_path+"Images/"+fname+".jpg"
+            label_path = self.data_path+"train_gt_t13/"+fname+".txt"
+            img_fnames.append(img_path)
+            label_fnames.append(label_path)
+
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             checkpoint = tf.train.latest_checkpoint(restore_path)
@@ -105,33 +114,59 @@ class Unet:
                 print("restore from: " + checkpoint)
                 saver.restore(sess, checkpoint)
 
-            for epoch in range(100):
-                pool = multiprocessing.Pool(1)
-                batch_size = 8
-                batch_data = []
-                batch_label = []
-                cnt=0
-                for r in pool.imap_unordered(self.worker, data_list):
-                    if r is None:
-                        continue
-                    img, label_img, fname = r
-                    print(fname)
-                    batch_data.append(img)
-                    batch_label.append(label_img)
-                    if len(batch_data)>=batch_size:
-                        cnt+=1
-                        batch_data = np.array(batch_data)
-                        batch_label = np.array(batch_label).reshape([8, 256, 256, 1])
-                        _, l, o = sess.run([optim, loss, output], feed_dict={input_tensor:batch_data, label_tensor:batch_label})
-                        print(l)
-                        if cnt%3==0:
-                            out_img = o[-1, :, :, :]
-                            cv2.imwrite("output.jpg", out_img.astype(np.uint8)*255)
-                            saver.save(sess, os.path.join(restore_path, 'model'))
-                            cv2.imwrite("label.jpg", batch_label[-1,:,:,:].astype(np.uint8)*255)
-                            cv2.imwrite("input.jpg", batch_data[-1,:,:,:].astype(np.uint8))
-                        batch_data = []
-                        batch_label = []
+            dataset = tf.data.Dataset.from_tensor_slices((img_fnames, label_fnames))
+            dataset = dataset.map(lambda img_f, label_f: tuple(tf.numpy_function(util.load_data, [img_f, label_f], 
+                [tf.uint8, tf.uint8]))).filter(lambda x, y: (x is not None) and (y is not None)).batch(8).prefetch(32).shuffle(2).repeat(10)
+     
+            iterator = dataset.make_initializable_iterator()
+            next_element = iterator.get_next()
+            sess.run(iterator.initializer)
+
+            cnt=0
+            while True:
+                try:
+                    img, label = sess.run(next_element)
+                    cnt+=1
+                    _, l, o = sess.run([optim, loss, output], feed_dict={input_tensor:img, label_tensor:label})
+                    print(l)
+                    if cnt%3==0:
+                        out_img = o[-1, :, :, :]
+                        cv2.imwrite("output.jpg", out_img.astype(np.uint8)*255)
+                        saver.save(sess, os.path.join(restore_path, 'model'))
+                        cv2.imwrite("label.jpg", label[-1,:,:,:].astype(np.uint8)*255)
+                        cv2.imwrite("input.jpg", img[-1,:,:,:].astype(np.uint8))
+                except tf.errors.OutOfRangeError:
+                    break
+
+
+
+            # for epoch in range(100):
+            #     pool = multiprocessing.Pool(1)
+            #     batch_size = 8
+            #     batch_data = []
+            #     batch_label = []
+            #     cnt=0
+            #     for r in pool.imap_unordered(self.worker, data_list):
+            #         if r is None:
+            #             continue
+            #         img, label_img, fname = r
+            #         print(fname)
+            #         batch_data.append(img)
+            #         batch_label.append(label_img)
+            #         if len(batch_data)>=batch_size:
+            #             cnt+=1
+            #             batch_data = np.array(batch_data)
+            #             batch_label = np.array(batch_label).reshape([8, 256, 256, 1])
+            #             _, l, o = sess.run([optim, loss, output], feed_dict={input_tensor:batch_data, label_tensor:batch_label})
+            #             print(l)
+            #             if cnt%3==0:
+            #                 out_img = o[-1, :, :, :]
+            #                 cv2.imwrite("output.jpg", out_img.astype(np.uint8)*255)
+            #                 saver.save(sess, os.path.join(restore_path, 'model'))
+            #                 cv2.imwrite("label.jpg", batch_label[-1,:,:,:].astype(np.uint8)*255)
+            #                 cv2.imwrite("input.jpg", batch_data[-1,:,:,:].astype(np.uint8))
+            #             batch_data = []
+            #             batch_label = []
 
 
 if __name__=="__main__":
