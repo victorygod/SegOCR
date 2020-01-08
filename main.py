@@ -64,11 +64,11 @@ class Unet:
 
         return x
 
-    def compile(self):
+    def compile(self, istraining=True):
         input_tensor = tf.placeholder(tf.float32, [None, None, None, 3])
         label_tensor = tf.placeholder(tf.float32, [None, None, None, 1])
 
-        pred = self.build(input_tensor, True)
+        pred = self.build(input_tensor, istraining)
         output = tf.nn.sigmoid(pred)
         loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=pred, labels=label_tensor))
 
@@ -90,7 +90,13 @@ class Unet:
     def train(self):
         input_tensor, label_tensor, output, loss, optim = self.compile()
 
-        saver = tf.train.Saver(tf.global_variables(), max_to_keep = 1)
+        var_list = tf.trainable_variables()
+        g_list = tf.global_variables()
+        bn_moving_vars = [g for g in g_list if 'moving_mean' in g.name]
+        bn_moving_vars += [g for g in g_list if 'moving_variance' in g.name]
+        var_list += bn_moving_vars
+        saver = tf.train.Saver(var_list=var_list, max_to_keep=1)
+
         restore_path = "checkpoint/"
 
         self.data_path = "../data/icdar2019/"
@@ -117,8 +123,8 @@ class Unet:
                 saver.restore(sess, checkpoint)
 
             dataset = tf.data.Dataset.from_tensor_slices((img_fnames, label_fnames))
-            dataset = dataset.map(lambda img_f, label_f: tuple(tf.numpy_function(util.load_data, [img_f, label_f], 
-                [tf.uint8, tf.uint8]))).batch(8)#.prefetch(8).shuffle(2).repeat(10)
+            dataset = dataset.map(lambda img_f, label_f: tuple(tf.py_func(util.load_data, [img_f, label_f],
+                [tf.uint8, tf.uint8])), num_parallel_calls=4).batch(8).prefetch(16).shuffle(2).repeat(10)
      
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
@@ -140,37 +146,41 @@ class Unet:
                 except tf.errors.OutOfRangeError:
                     break
 
+    def predict(self):
+        input_tensor, label_tensor, output, loss, optim = self.compile(False)
 
+        var_list = tf.trainable_variables()
+        g_list = tf.global_variables()
+        bn_moving_vars = [g for g in g_list if 'moving_mean' in g.name]
+        bn_moving_vars += [g for g in g_list if 'moving_variance' in g.name]
+        var_list += bn_moving_vars
+        saver = tf.train.Saver(var_list=g_list, max_to_keep=1)
 
-            # for epoch in range(100):
-            #     pool = multiprocessing.Pool(1)
-            #     batch_size = 8
-            #     batch_data = []
-            #     batch_label = []
-            #     cnt=0
-            #     for r in pool.imap_unordered(self.worker, data_list):
-            #         if r is None:
-            #             continue
-            #         img, label_img, fname = r
-            #         print(fname)
-            #         batch_data.append(img)
-            #         batch_label.append(label_img)
-            #         if len(batch_data)>=batch_size:
-            #             cnt+=1
-            #             batch_data = np.array(batch_data)
-            #             batch_label = np.array(batch_label).reshape([8, 256, 256, 1])
-            #             _, l, o = sess.run([optim, loss, output], feed_dict={input_tensor:batch_data, label_tensor:batch_label})
-            #             print(l)
-            #             if cnt%3==0:
-            #                 out_img = o[-1, :, :, :]
-            #                 cv2.imwrite("output.jpg", out_img.astype(np.uint8)*255)
-            #                 saver.save(sess, os.path.join(restore_path, 'model'))
-            #                 cv2.imwrite("label.jpg", batch_label[-1,:,:,:].astype(np.uint8)*255)
-            #                 cv2.imwrite("input.jpg", batch_data[-1,:,:,:].astype(np.uint8))
-            #             batch_data = []
-            #             batch_label = []
+        restore_path = "checkpoint_bk/"
 
+        imgs = []
+        data = os.listdir("input/")
+        for fname in data:
+            if not fname.endswith(".jpg"):
+                continue
+            img = cv2.imread("input/"+fname)
+            imgs.append(img)
+            print(img.shape)
+
+        print(np.array(imgs).shape)
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            checkpoint = tf.train.latest_checkpoint(restore_path)
+            saver.restore(sess, checkpoint)
+
+            o = sess.run(output, feed_dict={input_tensor:imgs})
+            print(np.unique(o))
+
+            for i in range(len(o)):
+                cv2.imwrite("output"+str(i)+".jpg", o[i,...].astype(np.float32)*255)
 
 if __name__=="__main__":
     unet = Unet()
-    unet.train()
+    # unet.train()
+    unet.predict()
