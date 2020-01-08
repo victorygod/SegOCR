@@ -11,7 +11,7 @@ class Unet:
 
     def _conv(self, x, kernels, istraining):
         x = tf.keras.layers.Conv2D(kernels, (3, 3), padding = "same")(x)
-        x = tf.keras.layers.BatchNormalization()(x, training = istraining)
+        # x = tf.keras.layers.BatchNormalization()(x, training = istraining)
         x = tf.nn.relu(x)
         return x
 
@@ -91,10 +91,10 @@ class Unet:
         input_tensor, label_tensor, output, loss, optim = self.compile()
 
         var_list = tf.trainable_variables()
-        g_list = tf.global_variables()
-        bn_moving_vars = [g for g in g_list if 'moving_mean' in g.name]
-        bn_moving_vars += [g for g in g_list if 'moving_variance' in g.name]
-        var_list += bn_moving_vars
+        # g_list = tf.global_variables()
+        # bn_moving_vars = [g for g in g_list if 'moving_mean' in g.name]
+        # bn_moving_vars += [g for g in g_list if 'moving_variance' in g.name]
+        # var_list += bn_moving_vars
         saver = tf.train.Saver(var_list=var_list, max_to_keep=1)
 
         restore_path = "checkpoint/"
@@ -150,10 +150,10 @@ class Unet:
         input_tensor, label_tensor, output, loss, optim = self.compile(False)
 
         var_list = tf.trainable_variables()
-        g_list = tf.global_variables()
-        bn_moving_vars = [g for g in g_list if 'moving_mean' in g.name]
-        bn_moving_vars += [g for g in g_list if 'moving_variance' in g.name]
-        var_list += bn_moving_vars
+        # g_list = tf.global_variables()
+        # bn_moving_vars = [g for g in g_list if 'moving_mean' in g.name]
+        # bn_moving_vars += [g for g in g_list if 'moving_variance' in g.name]
+        # var_list += bn_moving_vars
         saver = tf.train.Saver(var_list=g_list, max_to_keep=1)
 
         restore_path = "checkpoint_bk/"
